@@ -1,0 +1,29 @@
+{
+  "name": "cloudwalk-se-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsc-watch",
+    "build": "tsc",
+    "start": "node ./dist/index.js",
+    "start:dev": "tsc-watch --onSuccess \"npm start\"",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage --config jest.config.json --no-cache"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "@types/node": "^20.3.2",
+    "@typescript-eslint/eslint-plugin": "^5.60.1",
+    "@typescript-eslint/parser": "^5.60.1",
+    "eslint": "^8.43.0",
+    "tsc-watch": "^6.0.4",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.1.6"
+  }
+}
