@@ -1,12 +1,21 @@
 import { Match } from './match';
 import { LogHeader } from './model';
 
-export class Report {
+export class Report<T extends Match = Match> {
 
-  private readonly matches: Match[] = [];
+  private readonly matches: T[] = [];
 
-  get currentMatch(): Match | null {
+  constructor(
+    private readonly matchFactory: () => T
+  ) {
+  }
+
+  get currentMatch(): T | null {
     return this.matches[this.matches.length - 1];
+  }
+
+  set currentMatch(match: T) {
+    this.matches.push(match);
   }
 
   private parseHeader(line: string, lineno: number): [LogHeader, string] | null {
@@ -24,25 +33,24 @@ export class Report {
   }
 
   async ingestLine(line: string, lineno: number) {
-    const header = this.parseHeader(line, lineno);
-    if (!header) {
+    const result = this.parseHeader(line, lineno);
+    if (!result) {
       return;
     }
 
-    const [{ action }, data] = header;
-    if (action === 'InitGame') {
-      this.matches.push(new Match());
+    const [header, data] = result;
+    if (header.action === 'InitGame') {
+      this.matches.push(this.matchFactory());
     } else {
-      this.currentMatch?.ingest(action, data);
+      this.currentMatch ??= this.matchFactory();
+      this.currentMatch.ingest(header, data);
     }
   }
 
-  getDigest() {
-    const json = this.matches.reduce((digest, match, index) => ({
+  getDigest(): Record<string, ReturnType<T['getDigest']>> {
+    return this.matches.reduce((digest, match, index) => ({
       ...digest,
       [`game_${index + 1}`]: match.getDigest()
     }), {});
-
-    return JSON.stringify(json, null, 2);
   }
 }

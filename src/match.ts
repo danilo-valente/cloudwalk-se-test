@@ -1,66 +1,155 @@
-import { Action, MEANS_OF_DEATH } from './model';
-import * as console from 'console';
+import {
+  BasicDigest,
+  ENTITYNUM_WORLD,
+  HumanPlayer,
+  Kill,
+  LogHeader,
+  MEANS_OF_DEATH,
+  Player,
+  worldTypeGuard
+} from './model';
 
-export class Match {
+export class Match<T extends Required<BasicDigest> = Required<BasicDigest>> {
 
   private totalKills = 0;
 
-  private readonly players = new Set<string>();
-
-  private readonly playerScores: Record<string, number> = {};
+  protected readonly players: Record<string, HumanPlayer> = {};
 
   private readonly reasonScores: Record<string, number> = {};
 
-  ingest(action: Action, data: string) {
-    if (action === 'Kill') {
-      return this.ingestKill(data);
+  constructor(
+    protected readonly debug = false
+  ) {
+  }
+
+  ingest(header: LogHeader, data: string): boolean {
+    if (header.action === 'Kill') {
+      const kill = this.parseKill(data);
+      if (kill) {
+        this.ingestKill(kill);
+      } else {
+        console.error(`Invalid kill data: ${data}`);
+      }
+      return true;
     }
 
-    if (action === 'ClientUserinfoChanged') {
-      return this.ingestClientUserinfoChanged(data);
+    if (header.action === 'ClientUserinfoChanged') {
+      this.ingestClientUserinfoChanged(data);
+      return true;
+    }
+
+    // Unmapped actions are silently ignored
+    if (this.debug) {
+      console.log(`Ignoring unmapped action: ${header.action}`);
+    }
+
+    return false;
+  }
+
+  protected addPlayer(player: HumanPlayer) {
+    if (this.players[player.clientId]) {
+      this.players[player.clientId].name = player.name;
+    } else {
+      this.players[player.clientId] = player;
     }
   }
 
-  private addPlayer(player: string) {
-    this.players.add(player);
-    this.playerScores[player] ??= 0;
+  protected buildPlayer(clientId: string, name: string): Player {
+    if (worldTypeGuard(clientId)) {
+      return {
+        clientId,
+        isWorld: true
+      };
+    }
+
+    return {
+      clientId,
+      name,
+      isWorld: false,
+      score: 0
+    };
   }
 
-  private ingestKill(data: string) {
-    const [, killer, victim, reason] = data.match(/^\d+ \d+ \d+: (.*) killed (.*) by (.*)$/) ?? [];
+  private parseKill(data: string): Kill | null {
+    const [, killerId, victimId, killerName, victimName, reason] = data.match(/^(\d+) (\d+) \d+: (.*) killed (.*) by (.*)$/) ?? [];
 
+    const killer = this.buildPlayer(killerId, killerName);
+    if (!killer) {
+      console.error(`Invalid killer data: ${data}`);
+      return null;
+    }
+
+    const victim = this.buildPlayer(victimId, victimName);
+    if (!victim || victim.isWorld) {
+      console.error(`Invalid victim data: ${data}`);
+      return null;
+    }
+
+    if (!reason) {
+      console.error(`Missing kill reason: ${data}`);
+      return null;
+    }
+
+    if (!MEANS_OF_DEATH.includes(reason)) {
+      console.warn(`Unexpected kill reason: ${reason}`);
+    }
+
+    return { killer, victim, reason };
+  }
+
+  private ingestKill({ killer, victim, reason }: Kill) {
+    if (this.debug) {
+      console.log(`[${killer.isWorld ? '<world>' : killer.name}] killed [${victim.name}] by [${reason}]`);
+    }
+
+    // Add kill reason to score
+    this.reasonScores[reason] ??= 0;
+    this.reasonScores[reason]++;
+
+    // Add kill to total
     this.totalKills++;
+
+    // Memoize victim player
     this.addPlayer(victim);
 
-    if (MEANS_OF_DEATH.includes(reason)) {
-      this.reasonScores[reason] ??= 0;
-      this.reasonScores[reason]++;
+    if (killer.isWorld || killer.clientId === victim.clientId) {
+      // Killed itself -> add penalty to score
+      this.players[victim.clientId].score--;
     } else {
-      console.warn(`Received invalid kill reason: ${reason}`);
-    }
-
-    // console.log(killer, victim, this.playerScores[killer], this.playerScores[victim]);
-
-    if (killer === '<world>') {
-      this.playerScores[victim]--;
-    } else if (killer !== victim) {
+      // Memoize killer player
       this.addPlayer(killer);
-      this.playerScores[killer]++;
+      // Killed another player -> add kill to score
+      this.players[killer.clientId].score++;
     }
   }
 
   private ingestClientUserinfoChanged(data: string) {
-    const [, player] = data.match(/^\d+ n\\(.*)\\t\\/) ?? [];
-    if (player) {
+    const [, clientId, name] = data.match(/^(\d)+ n\\(.*)\\t\\/) ?? [];
+
+    const player = this.buildPlayer(clientId, name);
+
+    if (player && !player.isWorld) {
+      // Memoize player
       this.addPlayer(player);
+    } else {
+      console.error(`Invalid user info change data: ${data}`);
     }
   }
 
-  getDigest() {
+  getDigest(): Required<BasicDigest> {
+
+    const players = Object.values(this.players).map(({ name }) => name);
+
+    const kills = Object.values(this.players)
+      .reduce((map, { clientId, score }) => ({
+        ...map,
+        [this.players[clientId].name]: score
+      }), {});
+
     return {
       total_kills: this.totalKills,
-      players: [...this.players.values()],
-      kills: this.playerScores,
+      players,
+      kills,
       reasons: this.reasonScores
     };
   }

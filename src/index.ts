@@ -1,27 +1,12 @@
-import events from 'events';
-import fs from 'fs';
-import readline from 'readline';
-import { Report } from './report';
+import parseFile from './parser';
 
-async function parseFile(filepath: string): Promise<Report> {
-  const rl = readline.createInterface({
-    input: fs.createReadStream(filepath),
-    crlfDelay: Infinity
-  });
+const printReport = !Boolean(process.env.NO_REPORT);
 
-  const report = new Report();
-
-  let lineCount = 0;
-
-  rl.on('line', (line) => {
-    report.ingestLine(line, ++lineCount);
-  });
-
-  await events.once(rl, 'close');
-
-  return report;
-}
-
-parseFile(process.argv[2])
-  .then(report => console.log(report.getDigest()))
+parseFile({
+  filepath: process.argv[2],
+  detailed: process.argv[3] === '--detailed',
+  compare: process.argv[4]?.startsWith('--compare'),
+  debug: Boolean(process.env.DEBUG)
+})
+  .then(digest => printReport && console.log(digest))
   .catch(err => console.error(err));
