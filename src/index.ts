@@ -1,6 +1,9 @@
 import parseFile from './parser';
 
-const printReport = !Boolean(process.env.NO_REPORT);
+const detailed = process.argv[3] === '--detailed';
+const compare = process.argv[4]?.startsWith('--compare');
+const debug = Boolean(process.env.DEBUG);
+const printDigest = !Boolean(process.env.NO_REPORT);
 
 parseFile({
   filepath: process.argv[2],
@@ -8,5 +11,5 @@ parseFile({
   compare: process.argv[4]?.startsWith('--compare'),
   debug: Boolean(process.env.DEBUG)
 })
-  .then(digest => printReport && console.log(digest))
+  .then(digest => printDigest && console.log(digest))
   .catch(err => console.error(err));

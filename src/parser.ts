@@ -2,27 +2,34 @@ import events from 'events';
 import fs from 'fs';
 import readline from 'readline';
 
-import { DetailedDigest } from './model';
+import { BasicDigest, DetailedDigest } from './model';
 import { Match } from './match';
 import { Report } from './report';
 import { DetailedMatch } from './detailed-match';
 
 type Options = {
   filepath: string;
-  detailed: boolean;
-  compare: boolean;
-  debug: boolean;
+  detailed?: boolean;
+  compare?: boolean;
+  debug?: boolean;
 };
 
-export default async ({ filepath, detailed, compare, debug }: Options) => {
-  if (!detailed) {
-    const report = new Report(() => new Match(debug));
+export async function parseFileBasic({
+  filepath,
+  debug = false
+}: Omit<Options, 'detailed' | 'compare'>): Promise<Record<string, BasicDigest>> {
+  const report = new Report(() => new Match(debug));
 
-    await ingestFile(filepath, report);
+  await ingestFile(filepath, report);
 
-    return report.getDigest();
-  }
+  return report.getDigest();
+}
 
+export async function parseFileDetailed({
+  filepath,
+  compare = false,
+  debug = false
+}: Omit<Options, 'detailed'>): Promise<Record<string, DetailedDigest>> {
   const report = new Report(() => new DetailedMatch(debug));
 
   await ingestFile(filepath, report);
@@ -35,6 +42,22 @@ export default async ({ filepath, detailed, compare, debug }: Options) => {
 
   return digest;
 }
+
+export default ({
+  filepath,
+  detailed = false,
+  compare = false,
+  debug = false
+}: Options) => {
+  if (detailed) {
+    return parseFileDetailed({ filepath, compare, debug });
+  }
+
+  return parseFileBasic({
+    filepath,
+    debug
+  });
+};
 
 function verifyDigest([matchId, digest]: [string, DetailedDigest]) {
 
